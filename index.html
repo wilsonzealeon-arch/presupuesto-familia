@@ -660,7 +660,41 @@ function renderCred(){
   }).join('');
 }
 
-renderHome();
+// Al abrir la app, carga desde Sheets automáticamente
+async function initApp(){
+  // Muestra datos locales primero (si hay)
+  renderHome();
+  // Luego carga desde Sheets
+  try{
+    toast('Cargando datos...', true);
+    const r=await fetch(WEB_APP_URL+'?t='+Date.now());
+    const rows=await r.json();
+    if(Array.isArray(rows)&&rows.length>0){
+      const remoto=rows.filter(row=>row.fecha&&row.v).map((row,i)=>({
+        id:90000+i,
+        f:row.fecha||'',
+        t:row.tipo||'gasto',
+        cat:row.cat||'',
+        v:parseFloat(row.v)||0,
+        desc:row.desc||'',
+        mes:row.mes||''
+      })).filter(d=>d.v>0);
+      if(remoto.length>0){
+        data=remoto.reverse();
+        nid=data.reduce((m,d)=>Math.max(m,d.id||0),0)+1;
+        save();
+        renderHome();
+        toast('✓ '+remoto.length+' registros cargados');
+      } else {
+        toast('Sin registros en Sheets', true);
+      }
+    }
+  }catch(e){
+    toast('Sin conexión — mostrando datos locales', true);
+  }
+}
+
+initApp();
 </script>
 </body>
 </html>
