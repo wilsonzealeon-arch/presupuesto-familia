@@ -473,13 +473,15 @@ function addGasto(){
         mes=document.getElementById('gm').value,
         q=parseInt(document.getElementById('gq').value)||1;
   if(!f||!v||v<=0){toast('Ingresa fecha y valor válido',false);return;}
-  data.unshift({id:nid++,f,t:'gasto',cat,v:v*q,desc,mes});
+  const registro={id:nid++,f,t:'gasto',cat,v:v*q,desc,mes};
+  data.unshift(registro);
   save();
   document.getElementById('gv').value='';
   document.getElementById('gd').value='';
   document.getElementById('gq').value='1';
+  renderHome();
+  toast('Gasto registrado ✓');
   syncToSheets({fecha:f,tipo:'gasto',cat,v:v*q,desc,mes});
-  renderHome();toast('Guardando en Sheets...');
 }
 
 function addIngreso(){
@@ -488,12 +490,14 @@ function addIngreso(){
         desc=document.getElementById('ind').value,
         mes=document.getElementById('inm').value;
   if(!f||!v||v<=0){toast('Ingresa fecha y valor válido',false);return;}
-  data.unshift({id:nid++,f,t:'ingreso',cat,v,desc,mes});
+  const reg={id:nid++,f,t:'ingreso',cat,v,desc,mes};
+  data.unshift(reg);
   save();
   document.getElementById('inv').value='';
   document.getElementById('ind').value='';
+  renderHome();
+  toast('Ingreso registrado ✓');
   syncToSheets({fecha:f,tipo:'ingreso',cat,v,desc,mes});
-  renderHome();toast('Guardando en Sheets...');
 }
 
 function del(id){data=data.filter(d=>d.id!==id);save();renderHome();}
