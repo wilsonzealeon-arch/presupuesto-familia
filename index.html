@@ -121,7 +121,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
     <div class="date-pill" id="fecha-hoy"></div>
   </div>
   <div class="screen-inner">
-    <div class="sec" style="margin-top:14px">Resumen del mes</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:0">
+      <div class="sec" style="margin:0">Resumen del mes</div>
+      <button id="sync-btn" onclick="loadFromSheets()" style="font-size:11px;font-weight:600;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;">↻ Sincronizar Sheets</button>
+    </div>
     <div class="metrics">
       <div class="mc"><div class="mc-label">Gastos mes</div><div class="mc-val r" id="h-gas">$0</div></div>
       <div class="mc"><div class="mc-label">Ingresos mes</div><div class="mc-val g" id="h-ing">$0</div></div>
@@ -407,6 +410,32 @@ let nid=data.reduce((m,d)=>Math.max(m,d.id||0),0)+1;
 let pagos={};
 try{pagos=JSON.parse(localStorage.getItem('pf_pagos')||'{}');}catch(e){}
 
+const WEB_APP_URL='https://script.google.com/macros/s/AKfycbz7YXzsFM8yzIEhNx2VsGE6u1DGAxv4tRQCa_nehZ-F-tqr-J0Xum51G133m0KoD0MXtg/exec';
+
+async function syncToSheets(registro){
+  try{
+    await fetch(WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(registro)});
+  }catch(e){console.warn('Sync error:',e);}
+}
+
+async function loadFromSheets(){
+  const btn=document.getElementById('sync-btn');
+  if(btn){btn.textContent='Sincronizando...';btn.disabled=true;}
+  try{
+    const r=await fetch(WEB_APP_URL+'?t='+Date.now());
+    const rows=await r.json();
+    if(Array.isArray(rows)&&rows.length>1){
+      const remoto=rows.filter(row=>row.fecha&&row.v).map((row,i)=>({
+        id:90000+i,f:row.fecha||'',t:row.tipo||'gasto',cat:row.cat||'',
+        v:parseFloat(row.v)||0,desc:row.desc||'',mes:row.mes||''
+      })).filter(d=>d.v>0);
+      if(remoto.length>0){data=remoto.reverse();nid=data.reduce((m,d)=>Math.max(m,d.id||0),0)+1;save();renderHome();}
+      toast('✓ '+remoto.length+' registros sincronizados');
+    } else { toast('Sin datos en Sheets aún',true); }
+  }catch(e){toast('Error de conexión',false);}
+  if(btn){btn.textContent='↻ Sincronizar Sheets';btn.disabled=false;}
+}
+
 function save(){try{localStorage.setItem('pf_v4',JSON.stringify(data));}catch(e){}}
 function savePagos(){try{localStorage.setItem('pf_pagos',JSON.stringify(pagos));}catch(e){}}
 const fmt=n=>'$'+Math.round(n).toLocaleString('es-CO');
@@ -448,7 +477,8 @@ function addGasto(){
   document.getElementById('gv').value='';
   document.getElementById('gd').value='';
   document.getElementById('gq').value='1';
-  renderHome();toast('Gasto registrado ✓');
+  syncToSheets({fecha:f,tipo:'gasto',cat,v:v*q,desc,mes});
+  renderHome();toast('Guardando en Sheets...');
 }
 
 function addIngreso(){
@@ -461,7 +491,8 @@ function addIngreso(){
   save();
   document.getElementById('inv').value='';
   document.getElementById('ind').value='';
-  renderHome();toast('Ingreso registrado ✓');
+  syncToSheets({fecha:f,tipo:'ingreso',cat,v,desc,mes});
+  renderHome();toast('Guardando en Sheets...');
 }
 
 function del(id){data=data.filter(d=>d.id!==id);save();renderHome();}
