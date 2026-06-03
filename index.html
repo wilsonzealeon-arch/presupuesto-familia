@@ -101,6 +101,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .screen{display:none}.screen.on{display:block}
 .screen::-webkit-scrollbar{display:none}
 .screen{-ms-overflow-style:none;scrollbar-width:none}
+.chip-btn{font-size:11px;font-weight:600;padding:5px 11px;border-radius:20px;border:0.5px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s}
+.chip-btn:active{background:var(--text);color:#fff}
+.chip-btn.on{background:var(--text);color:#fff}
 .field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6560' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
 .info-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:0.5px solid var(--border);font-size:13px}
 .info-row:last-child{border-bottom:none}
@@ -170,7 +173,23 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       </div>
     </div>
 
-    <div class="sec">Últimos movimientos</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;margin-bottom:10px">
+      <div class="sec" style="margin:0">Movimientos</div>
+      <button onclick="toggleFiltro()" id="filtro-btn" style="font-size:11px;font-weight:600;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;">🗓 Filtrar fechas</button>
+    </div>
+    <div id="filtro-panel" style="display:none;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:13px 14px;margin-bottom:12px">
+      <div class="field-row" style="margin-bottom:10px">
+        <div class="field" style="margin:0"><label>Desde</label><input type="date" id="f-desde" onchange="renderHome()"/></div>
+        <div class="field" style="margin:0"><label>Hasta</label><input type="date" id="f-hasta" onchange="renderHome()"/></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="setFiltro('hoy')" class="chip-btn">Hoy</button>
+        <button onclick="setFiltro('semana')" class="chip-btn">Esta semana</button>
+        <button onclick="setFiltro('mes')" class="chip-btn">Este mes</button>
+        <button onclick="setFiltro('todo')" class="chip-btn">Todo</button>
+      </div>
+    </div>
+    <div id="filtro-resumen" style="display:none;font-size:12px;color:var(--text3);margin-bottom:8px;padding:0 2px"></div>
     <div class="tx-list" id="txlist"><div class="empty">Sin movimientos aún</div></div>
   </div>
 </div>
@@ -187,9 +206,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
       <div class="info-row"><span class="info-label">Ded. pensión/salud <span class="badge-nom">nómina</span></span><span class="info-val">$169.742</span></div>
       <div class="info-row"><span class="info-label">Seguro de médico <span class="badge-nom">nómina</span></span><span class="info-val">$38.813</span></div>
       <div class="info-row"><span class="info-label">Póliza Alfa <span class="badge-nom">nómina</span></span><span class="info-val">$38.654</span></div>
+      <div class="info-row"><span class="info-label">Fondo emergencias médicas</span><span class="info-val">$1.000.000</span></div>
       <div class="info-row"><span class="info-label">Créditos/bancos</span><span class="info-val" style="color:var(--red)">$2.680.646</span></div>
       <div class="info-row"><span class="info-label">Ahorro fijo</span><span class="info-val" style="color:var(--green)">$2.585.395</span></div>
-      <div class="info-row"><span class="info-label"><strong>Presupuesto mensual</strong></span><span class="info-val" style="color:var(--blue)"><strong>$7.459.989</strong></span></div>
+      <div class="info-row"><span class="info-label"><strong>Presupuesto mensual</strong></span><span class="info-val" style="color:var(--blue)"><strong>$8.011.729</strong></span></div>
     </div>
 
     <div class="metrics">
@@ -269,7 +289,7 @@ const todayStr=today.toISOString().split('T')[0];
 const curMes=MESES[today.getMonth()];
 
 // Presupuesto mensual correcto según hoja
-const PRESUPUESTO_NETO=7459989;
+const PRESUPUESTO_NETO=8011729;
 
 document.getElementById('fecha-hoy').textContent=today.toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'});
 document.getElementById('pres-mes-label').textContent=curMes[0]+curMes.slice(1).toLowerCase();
@@ -413,9 +433,53 @@ try{pagos=JSON.parse(localStorage.getItem('pf_pagos')||'{}');}catch(e){}
 
 const WEB_APP_URL='https://script.google.com/macros/s/AKfycbz7YXzsFM8yzIEhNx2VsGE6u1DGAxv4tRQCa_nehZ-F-tqr-J0Xum51G133m0KoD0MXtg/exec';
 
+// Lee cualquier columna con o sin espacios
+function col(row, ...names){
+  for(const n of names){
+    if(row[n]!==undefined&&row[n]!==null&&row[n]!=='') return row[n];
+    if(row[n+' ']!==undefined&&row[n+' ']!==null&&row[n+' ']!=='') return row[n+' '];
+    if(row[' '+n]!==undefined&&row[' '+n]!==null&&row[' '+n]!=='') return row[' '+n];
+  }
+  return '';
+}
+
+// Convierte fila de Sheets a objeto local
+function sheetRowToLocal(row, i){
+  const f = col(row,'Fecha','fecha').toString().trim();
+  const v = parseFloat(col(row,'Valor','valor','v'))||0;
+  const t = col(row,'Tipo','tipo').toString().trim()||'gasto';
+  const cat = col(row,'Categoria','categoria','cat').toString().trim();
+  const desc = col(row,'Descripcion','descripcion','desc').toString().trim();
+  const mes = col(row,'Mes','mes').toString().trim();
+  return {id:90000+i, f, t, cat, v, desc, mes};
+}
+
+// Elimina duplicados: mismo f+cat+v+desc
+function deduplicar(arr){
+  const seen = new Set();
+  return arr.filter(d=>{
+    const key = d.f+'|'+d.cat+'|'+d.v+'|'+d.desc;
+    if(seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function syncToSheets(registro){
   try{
-    await fetch(WEB_APP_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(registro)});
+    await fetch(WEB_APP_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        fecha: registro.fecha,
+        tipo: registro.tipo,
+        cat: registro.cat,
+        v: registro.v,
+        desc: registro.desc,
+        mes: registro.mes
+      })
+    });
   }catch(e){console.warn('Sync error:',e);}
 }
 
@@ -502,6 +566,45 @@ function addIngreso(){
 
 function del(id){data=data.filter(d=>d.id!==id);save();renderHome();}
 
+function toggleFiltro(){
+  const p=document.getElementById('filtro-panel');
+  const b=document.getElementById('filtro-btn');
+  const show=p.style.display==='none';
+  p.style.display=show?'block':'none';
+  b.style.background=show?'var(--text)':'var(--surface2)';
+  b.style.color=show?'#fff':'var(--text2)';
+  if(show && !document.getElementById('f-desde').value){
+    setFiltro('mes');
+  }
+}
+
+function setFiltro(tipo){
+  const now=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  const fmt=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.querySelectorAll('.chip-btn').forEach(b=>b.classList.remove('on'));
+  if(tipo==='hoy'){
+    document.getElementById('f-desde').value=todayStr;
+    document.getElementById('f-hasta').value=todayStr;
+    event.target.classList.add('on');
+  } else if(tipo==='semana'){
+    const mon=new Date(now);mon.setDate(now.getDate()-now.getDay()+1);
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    document.getElementById('f-desde').value=fmt(mon);
+    document.getElementById('f-hasta').value=fmt(sun);
+    event.target.classList.add('on');
+  } else if(tipo==='mes'){
+    document.getElementById('f-desde').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
+    document.getElementById('f-hasta').value=todayStr;
+    event.target.classList.add('on');
+  } else {
+    document.getElementById('f-desde').value='';
+    document.getElementById('f-hasta').value='';
+    event.target.classList.add('on');
+  }
+  renderHome();
+}
+
 function renderHome(){
   const mStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
   const gas=data.filter(d=>d.t==='gasto'&&d.f&&d.f.startsWith(mStr)).reduce((a,b)=>a+b.v,0);
@@ -517,9 +620,38 @@ function renderHome(){
   document.getElementById('h-hoy').textContent=fmt(hoy);
   document.getElementById('h-pct').textContent=pct+'%';
 
+  // Filtro de fechas
+  const desde=document.getElementById('f-desde')?.value||'';
+  const hasta=document.getElementById('f-hasta')?.value||'';
+  let filtered=data;
+  if(desde||hasta){
+    filtered=data.filter(d=>{
+      if(!d.f) return false;
+      if(desde && d.f < desde) return false;
+      if(hasta && d.f > hasta) return false;
+      return true;
+    });
+  }
+
+  // Resumen del filtro
+  const resEl=document.getElementById('filtro-resumen');
+  if(resEl){
+    if(desde||hasta){
+      const gasF=filtered.filter(d=>d.t==='gasto').reduce((a,b)=>a+b.v,0);
+      const ingF=filtered.filter(d=>d.t==='ingreso').reduce((a,b)=>a+b.v,0);
+      resEl.style.display='block';
+      resEl.innerHTML=`${filtered.length} movimientos · Gastos: <strong style="color:var(--red)">${fmt(gasF)}</strong> · Ingresos: <strong style="color:var(--green)">${fmt(ingF)}</strong>`;
+    } else {
+      resEl.style.display='none';
+    }
+  }
+
   const list=document.getElementById('txlist');
-  if(!data.length){list.innerHTML='<div class="empty">Sin movimientos aún</div>';return;}
-  list.innerHTML=data.slice(0,25).map(d=>{
+  if(!filtered.length){
+    list.innerHTML='<div class="empty">'+(desde||hasta?'Sin movimientos en ese período':'Sin movimientos aún')+'</div>';
+    return;
+  }
+  list.innerHTML=filtered.map(d=>{
     const icon=CAT_ICONS[d.cat]||'💳';
     const bg=d.t==='gasto'?'#FEE2E2':'#DCFCE7';
     return`<div class="tx-item">
@@ -548,12 +680,13 @@ function renderPres(){
       const bud=BUDGET[cat]||0;
       const sp=data.filter(d=>d.t==='gasto'&&d.cat===cat).reduce((a,b)=>a+b.v,0);
       const p=bud>0?Math.min(Math.round((sp/bud)*100),100):0;
-      const cc=p>90?'#DC2626':p>70?'#D97706':'#16A34A';
+      const cc=p>=100?'#DC2626':p>=90?'#D97706':'#16A34A';
       const isNom=ES_NOMINA.includes(cat);
       if(bud===0){
+        const spZ=data.filter(d=>d.t==='gasto'&&d.cat===cat).reduce((a,b)=>a+b.v,0);
         html+=`<div class="bcat"><div class="bcat-head">
           <span class="bcat-name">${CAT_ICONS[cat]||''} ${cat}${isNom?'<span class="badge-nom">nómina</span>':''}</span>
-          <span class="bcat-nums" style="color:var(--text3)">sin asignar</span>
+          <span class="bcat-nums" style="color:var(--text3)">${spZ>0?fmt(spZ)+' gastado':'Por definir'}</span>
         </div></div>`;
       } else {
         html+=`<div class="bcat">
@@ -601,7 +734,7 @@ function renderAnal(){
         <div><strong>${icon} ${cat}</strong><br><span style="font-size:12px">Gastado: ${fmt(sp)} / Presupuesto: ${fmt(bud)}</span></div>
         <div style="text-align:right;flex-shrink:0"><span style="font-size:13px;font-weight:700">+${fmt(sp-bud)}</span><br><span style="font-size:11px">${Math.round(p)}%</span></div>
       </div>`);
-    } else if(p>80){
+    } else if(p>=90&&p<=100){
       amarillos.push(`<div class="alert al-a" style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div><strong>${icon} ${cat}</strong><br><span style="font-size:12px">Gastado: ${fmt(sp)} — Queda: ${fmt(bud-sp)}</span></div>
         <div style="text-align:right;flex-shrink:0"><span style="font-size:13px;font-weight:700">${Math.round(p)}%</span></div>
@@ -670,14 +803,19 @@ async function initApp(){
     const r=await fetch(WEB_APP_URL+'?t='+Date.now());
     const rows=await r.json();
     if(Array.isArray(rows)&&rows.length>0){
-      const remoto=rows.filter(row=>row.fecha&&row.v).map((row,i)=>({
+      // Sheets columns: Timestamp, Fecha , Tipo, Categoria, Valor , Descripcion , Mes 
+    const remoto=rows.filter(row=>{
+        const f=row['Fecha ']||row['fecha']||row['Fecha']||'';
+        const v=parseFloat(row['Valor ']||row['Valor']||row['v'])||0;
+        return f&&v>0;
+      }).map((row,i)=>({
         id:90000+i,
-        f:row.fecha||'',
-        t:row.tipo||'gasto',
-        cat:row.cat||'',
-        v:parseFloat(row.v)||0,
-        desc:row.desc||'',
-        mes:row.mes||''
+        f:(row['Fecha ']||row['fecha']||row['Fecha']||'').toString().trim(),
+        t:(row['Tipo']||row['tipo']||'gasto').toString().trim(),
+        cat:(row['Categoria']||row['cat']||'').toString().trim(),
+        v:parseFloat(row['Valor ']||row['Valor']||row['v'])||0,
+        desc:(row['Descripcion ']||row['Descripcion']||row['desc']||'').toString().trim(),
+        mes:(row['Mes ']||row['Mes']||row['mes']||'').toString().trim()
       })).filter(d=>d.v>0);
       if(remoto.length>0){
         data=remoto.reverse();
