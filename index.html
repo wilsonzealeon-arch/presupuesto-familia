@@ -126,7 +126,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="screen-inner">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:0">
       <div class="sec" style="margin:0">Resumen del mes</div>
-      <button id="sync-btn" onclick="loadFromSheets()" style="font-size:11px;font-weight:600;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;">↻ Sincronizar Sheets</button>
+      <div style="display:flex;gap:6px">
+      <button id="sync-btn" onclick="loadFromSheets()" style="font-size:11px;font-weight:600;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;">↻ Sync</button>
+      <button onclick="limpiarDuplicados()" style="font-size:11px;font-weight:600;background:var(--surface2);border:0.5px solid var(--border);border-radius:20px;padding:5px 12px;cursor:pointer;color:var(--text2);font-family:'DM Sans',sans-serif;">⊘ Duplicados</button>
+      </div>
     </div>
     <div class="metrics">
       <div class="mc"><div class="mc-label">Gastos mes</div><div class="mc-val r" id="h-gas">$0</div></div>
@@ -227,9 +230,10 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
   <div class="top-bar"><div><h1>Análisis</h1></div></div>
   <div class="screen-inner" style="padding-top:14px">
     <div class="chart-card">
-      <div class="sec">Gastos por grupo</div>
+      <div class="sec">Gastos por familia</div>
       <div style="position:relative;height:200px"><canvas id="cGrp"></canvas></div>
     </div>
+    <div id="fam-list" style="margin-bottom:14px"></div>
     <div class="chart-card">
       <div class="sec">Distribución del ingreso ($14.677.000)</div>
       <div style="position:relative;height:200px"><canvas id="cDist"></canvas></div>
@@ -285,7 +289,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 const MESES=['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
 const MESES_S=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
 const today=new Date();
-const todayStr=today.toISOString().split('T')[0];
+const pad=n=>String(n).padStart(2,'0');
+const todayStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
 const curMes=MESES[today.getMonth()];
 
 // Presupuesto mensual correcto según hoja
@@ -564,7 +569,41 @@ function addIngreso(){
   syncToSheets({fecha:f,tipo:'ingreso',cat,v,desc,mes});
 }
 
-function del(id){data=data.filter(d=>d.id!==id);save();renderHome();}
+async function deleteFromSheets(registro){
+  try{
+    await fetch(WEB_APP_URL,{
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action:'delete',
+        fecha: registro.f,
+        tipo: registro.t,
+        cat: registro.cat,
+        v: registro.v,
+        desc: registro.desc,
+        mes: registro.mes
+      })
+    });
+  }catch(e){console.warn('Delete sync error:',e);}
+}
+
+function del(id){
+  const reg=data.find(d=>d.id===id);
+  data=data.filter(d=>d.id!==id);
+  save();
+  renderHome();
+  if(reg) deleteFromSheets(reg);
+}
+
+function limpiarDuplicados(){
+  const antes=data.length;
+  data=deduplicar(data);
+  save();
+  renderHome();
+  const eliminados=antes-data.length;
+  toast(eliminados>0?`✓ ${eliminados} duplicados eliminados`:'Sin duplicados encontrados');
+}
 
 function toggleFiltro(){
   const p=document.getElementById('filtro-panel');
@@ -580,8 +619,7 @@ function toggleFiltro(){
 
 function setFiltro(tipo){
   const now=new Date();
-  const pad=n=>String(n).padStart(2,'0');
-  const fmt=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmtDate=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   document.querySelectorAll('.chip-btn').forEach(b=>b.classList.remove('on'));
   if(tipo==='hoy'){
     document.getElementById('f-desde').value=todayStr;
@@ -590,8 +628,8 @@ function setFiltro(tipo){
   } else if(tipo==='semana'){
     const mon=new Date(now);mon.setDate(now.getDate()-now.getDay()+1);
     const sun=new Date(mon);sun.setDate(mon.getDate()+6);
-    document.getElementById('f-desde').value=fmt(mon);
-    document.getElementById('f-hasta').value=fmt(sun);
+    document.getElementById('f-desde').value=fmtDate(mon);
+    document.getElementById('f-hasta').value=fmtDate(sun);
     event.target.classList.add('on');
   } else if(tipo==='mes'){
     document.getElementById('f-desde').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-01`;
@@ -606,10 +644,10 @@ function setFiltro(tipo){
 }
 
 function renderHome(){
-  const mStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0');
+  const mStr=`${today.getFullYear()}-${pad(today.getMonth()+1)}`;
   const gas=data.filter(d=>d.t==='gasto'&&d.f&&d.f.startsWith(mStr)).reduce((a,b)=>a+b.v,0);
   const ing=data.filter(d=>d.t==='ingreso'&&d.f&&d.f.startsWith(mStr)).reduce((a,b)=>a+b.v,0);
-  const hoy=data.filter(d=>d.t==='gasto'&&d.f===todayStr).reduce((a,b)=>a+b.v,0);
+  const hoy=data.filter(d=>d.t==='gasto'&&(d.f||'').trim()===todayStr).reduce((a,b)=>a+b.v,0);
   const dis=ing-gas;
   const pct=Math.round((gas/PRESUPUESTO_NETO)*100);
 
@@ -703,18 +741,72 @@ function renderPres(){
 }
 
 function renderAnal(){
-  const grpMap={};
+  // Agrupa por FAMILIA de categorías
+  const FAMILIAS={
+    'Transporte':['Pasajes','Taxi','Combustible','Parqueadero','Combustible Vehículo','SOAT','Cuota Vehículo','Seguro Vehículo','Mantenimiento Vehículo'],
+    'Mercado y Comida':['Mercado Super','Mercado Carniceria','Mercado Plaza','Alimentacion & Otros','Comida fuera'],
+    'Hogar y Vivienda':['Arriendo','Mantenimiento Hogar','Elementos varios','Aseo hogar'],
+    'Servicios':['Agua','Luz','Internet','Gas','Plan Celular Wilson','Plan Celular Martha','Suscripciones Digitales'],
+    'Salud':['Medicina / Copagos','Colmedica Daniel','Seguro de medico (nómina)','Poliza Alfa (nómina)','Fondo Emergencias Médicas'],
+    'Educación':['Jardin Daniel','Educación / Útiles escolares'],
+    'Aseo y Cuidado':['Peluqueria','Productos de aseo','Ortodoncia Wilson'],
+    'Ropa y Entretenimiento':['Ropa y Vestido Familiar','Entretenimiento'],
+    'Ahorro':['Ahorro Imprevistos','Ahorro Fondo Union','Cumpleaños','Vacaciones','Impuestos','Mantenimiento programado'],
+    'Créditos':['Credito Banco Occidente','Credito Empleados Bco','Credito Banco Bogota','Credito Colsubsidio','Fondo Union']
+  };
+  const FAM_COLORS={
+    'Transporte':'#B45309','Mercado y Comida':'#16A34A','Hogar y Vivienda':'#D97706',
+    'Servicios':'#2563EB','Salud':'#DB2777','Educación':'#7C3AED',
+    'Aseo y Cuidado':'#059669','Ropa y Entretenimiento':'#EC4899',
+    'Ahorro':'#0891B2','Créditos':'#DC2626'
+  };
+
+  const famMap={};
   data.filter(d=>d.t==='gasto').forEach(d=>{
-    const grp=Object.entries(GRUPOS).find(([,cats])=>cats.includes(d.cat))?.[0]||'Otros';
-    grpMap[grp]=(grpMap[grp]||0)+d.v;
+    const fam=Object.entries(FAMILIAS).find(([,cats])=>cats.includes(d.cat))?.[0]||'Otros';
+    famMap[fam]=(famMap[fam]||0)+d.v;
   });
-  const grpE=Object.entries(grpMap).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
-  const gLabs=grpE.map(e=>e[0]),gVals=grpE.map(e=>e[1]),gClrs=gLabs.map(l=>GRPCOLORS[l]||'#888');
+  const famE=Object.entries(famMap).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]);
+  const gLabs=famE.map(e=>e[0]),gVals=famE.map(e=>e[1]),gClrs=gLabs.map(l=>FAM_COLORS[l]||'#888');
 
   if(cGrp)cGrp.destroy();
   if(gLabs.length){
-    cGrp=new Chart(document.getElementById('cGrp'),{type:'doughnut',data:{labels:gLabs,datasets:[{data:gVals,backgroundColor:gClrs,borderWidth:1,borderColor:'#fff'}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:10},padding:6}},tooltip:{callbacks:{label:c=>`${c.label}: ${fmt(c.raw)}`}}}}});
+    cGrp=new Chart(document.getElementById('cGrp'),{
+      type:'doughnut',
+      data:{labels:gLabs,datasets:[{data:gVals,backgroundColor:gClrs,borderWidth:1,borderColor:'#fff'}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+        plugins:{
+          legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:10},padding:5}},
+          tooltip:{callbacks:{label:c=>`${c.label}: ${fmt(c.raw)}`}}
+        }
+      }
+    });
   }
+
+  // Lista detallada por familia debajo del gráfico
+  let famHtml='';
+  famE.forEach(([fam,total])=>{
+    const clr=FAM_COLORS[fam]||'#888';
+    const cats=FAMILIAS[fam]||[];
+    const detalle=cats.map(cat=>{
+      const sp=data.filter(d=>d.t==='gasto'&&d.cat===cat).reduce((a,b)=>a+b.v,0);
+      if(!sp) return '';
+      return `<div style="display:flex;justify-content:space-between;padding:5px 0 5px 12px;border-bottom:0.5px solid var(--border);font-size:12px">
+        <span style="color:var(--text2)">${CAT_ICONS[cat]||''} ${cat}</span>
+        <span style="font-weight:600">${fmt(sp)}</span>
+      </div>`;
+    }).filter(Boolean).join('');
+    if(!detalle) return;
+    famHtml+=`<div style="margin-bottom:12px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-left:3px solid ${clr}">
+        <span style="font-size:13px;font-weight:700">${fam}</span>
+        <span style="font-size:14px;font-weight:700;color:${clr}">${fmt(total)}</span>
+      </div>
+      ${detalle}
+    </div>`;
+  });
+  const famListEl=document.getElementById('fam-list');
+  if(famListEl) famListEl.innerHTML=famHtml||'<div class="empty">Registra gastos para ver el desglose</div>';
 
   const DIST=[
     {l:'Diezmos 10%',v:1467700,c:'#D97706'},{l:'Ofrendas 4%',v:587080,c:'#FBBF24'},
